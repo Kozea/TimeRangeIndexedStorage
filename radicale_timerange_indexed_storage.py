@@ -1,9 +1,12 @@
 from datetime import date, datetime, time, timezone
 
-from radicale.storage import Collection as FileSystemCollection
+from radicale.storage import Collection as FileSystemCollection, path_to_filesystem
 from radicale.xmlutils import _tag
 import os
 import sqlite3
+from itertools import groupby
+from random import getrandbits
+import vobject
 
 
 class Db(object):
@@ -35,6 +38,11 @@ class Db(object):
     def add(self, href, start, end, load):
         self.cursor.execute('INSERT INTO events VALUES (?, ?, ?, ?)', (
             href, start, end, load))
+        self.commit()
+
+    def add_all(self, elements):
+        self.cursor.executemany(
+            'INSERT INTO events VALUES (?, ?, ?, ?)', elements)
         self.commit()
 
     def search(self, start, end):
@@ -77,8 +85,7 @@ class Collection(FileSystemCollection):
 
         return [self.get(href) for href, in self.db.search(start, end)]
 
-    def upload(self, href, vobject_item):
-        item = super().upload(href, vobject_item)
+    def get_db_params(self, href, item):
         if hasattr(item.item, 'vevent'):
             vobj = item.item.vevent
         elif hasattr(item.item, 'vtodo'):
@@ -104,6 +111,52 @@ class Collection(FileSystemCollection):
         end = end.timestamp()
 
         load = bool(getattr(vobj, 'rruleset', False))
-        self.db.add(href, start, end, load)
+        return href, start, end, load
 
+    def upload(self, href, vobject_item):
+        item = super().upload(href, vobject_item)
+        self.db.add(*self.get_db_params(href, item))
         return item
+
+    @classmethod
+    def create_collection(cls, href, collection=None, tag=None):
+        folder = os.path.expanduser(
+            cls.configuration.get("storage", "filesystem_folder"))
+        path = path_to_filesystem(folder, href)
+        if not os.path.exists(path):
+            os.makedirs(path)
+        if not tag and collection:
+            tag = collection[0].name
+        self = cls(href)
+        if tag == "VCALENDAR":
+            self.set_meta("tag", "VCALENDAR")
+            if collection:
+                collection, = collection
+                items = []
+                for content in ("vevent", "vtodo", "vjournal"):
+                    items.extend(getattr(collection, "%s_list" % content, []))
+
+                def get_uid(item):
+                    return hasattr(item, 'uid') and item.uid.value
+
+                items_by_uid = groupby(
+                    sorted(items, key=get_uid), get_uid)
+
+                added_items = set()
+                for uid, items in items_by_uid:
+                    new_collection = vobject.iCalendar()
+                    for item in items:
+                        new_collection.add(item)
+                    file_name = hex(getrandbits(32))[2:]
+                    item = super(Collection, self).upload(
+                        file_name, new_collection)
+                    added_items.add(self.get_db_params(file_name, item))
+                self.db.add_all(added_items)
+
+        elif tag == "VCARD":
+            self.set_meta("tag", "VADDRESSBOOK")
+            if collection:
+                for card in collection:
+                    file_name = hex(getrandbits(32))[2:]
+                    self.upload(file_name, card)
+        return self
