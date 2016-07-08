@@ -120,6 +120,7 @@ class Collection(FileSystemCollection):
 
     @classmethod
     def create_collection(cls, href, collection=None, tag=None):
+        # TODO: Improve Radicale api to avoid copy pasta
         folder = os.path.expanduser(
             cls.configuration.get("storage", "filesystem_folder"))
         path = path_to_filesystem(folder, href)
