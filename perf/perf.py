@@ -64,8 +64,8 @@ for type in ('multifilesystem', 'radicale_timerange_indexed_storage'):
                 ))),
         getLogger('rt'))
 
-    collections = get_col()
-    app.do_MKCALENDAR(environ, collections, collections, mkcal, None)
+    # collections = get_col()
+    # app.do_MKCALENDAR(environ, collections, collections, mkcal, None)
 
     collections = get_col()
     t0 = time()
