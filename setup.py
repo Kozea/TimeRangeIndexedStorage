@@ -7,7 +7,7 @@ Radicale Time Range Indexed Storage
 
 from setuptools import find_packages, setup
 
-VERSION = '1.1.1'
+VERSION = '1.1.2'
 
 
 tests_requirements = [

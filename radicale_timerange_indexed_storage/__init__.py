@@ -1,6 +1,7 @@
 from datetime import date, datetime, time, timezone
 
-from radicale.storage import Collection as FileSystemCollection, path_to_filesystem
+from radicale.storage import (
+    Collection as FileSystemCollection, path_to_filesystem)
 from radicale.xmlutils import _tag
 import os
 import sqlite3
@@ -48,15 +49,15 @@ class Db(object):
     def search(self, start, end):
         return self.cursor.execute(
             'SELECT href FROM events WHERE load OR ('
-            '? < end and ? > start)', (start, end))
+            '? < end AND ? > start)', (start, end))
 
 
 class Collection(FileSystemCollection):
-    db_name = 'timerange-index.db.props'
+    db_name = '.index.db.props'  # TODO: Find a better way to avoid conflicts
 
     def __init__(self, path, principal=False):
         super().__init__(path, principal)
-        db_path = os.path.join(self._filesystem_path, self.db_name)
+        db_path = self._filesystem_path + self.db_name
         self.db = Db(db_path)
 
     def dt_to_timestamp(self, dt):
