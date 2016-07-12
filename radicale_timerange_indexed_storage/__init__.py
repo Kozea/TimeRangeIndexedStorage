@@ -51,6 +51,19 @@ class Db(object):
             'SELECT href FROM events WHERE load OR ('
             '? < end AND ? > start)', (start, end))
 
+    def update(self, href, start, end, load):
+        self.cursor.execute(
+            'UPDATE events SET start = ?, end = ?, load = ? WHERE href = ?', (
+                start, end, load, href))
+        self.commit()
+
+    def delete(self, href):
+        if href is not None:
+            self.cursor.execute('DELETE FROM events WHERE href = ?', (href,))
+        else:
+            self.cursor.execute('DELETE FROM events')
+        self.commit()
+
 
 class Collection(FileSystemCollection):
     db_name = '.index.db.props'  # TODO: Find a better way to avoid conflicts
@@ -116,8 +129,19 @@ class Collection(FileSystemCollection):
 
     def upload(self, href, vobject_item):
         item = super().upload(href, vobject_item)
-        self.db.add(*self.get_db_params(href, item))
+        if item:
+            self.db.add(*self.get_db_params(href, item))
         return item
+
+    def update(self, href, vobject_item, etag=None):
+        item = super().upload(href, vobject_item)
+        if item:
+            self.db.update(*self.get_db_params(href, item))
+        return item
+
+    def delete(self, href=None, etag=None):
+        super().delete(href, etag)
+        self.db.delete(href)
 
     @classmethod
     def create_collection(cls, href, collection=None, tag=None):
