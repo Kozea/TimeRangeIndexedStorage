@@ -48,7 +48,7 @@ class Db(object):
 
     def search(self, start, end):
         return self.cursor.execute(
-            'SELECT raw FROM events WHERE load OR ('
+            'SELECT href, raw FROM events WHERE load OR ('
             '? < end AND ? > start)', (start, end))
 
     def list(self):
@@ -113,9 +113,20 @@ class Collection(FileSystemCollection):
         end = self.dt_to_timestamp(
             datetime.strptime(end, "%Y%m%dT%H%M%SZ"))
 
-        return  [a for a in
-            [self.get(href) for href, in self.db.search(start, end)]
-            if a is not None]
+        return self.itemize(self.db.search(start, end))
+
+    def without_none(self, it):
+        for i in it:
+            if i is not None:
+                yield i
+
+    def first(self, it):
+        for i, in it:
+            yield i
+
+    def itemize(self, it):
+        for href, raw in it:
+            yield Item(self, vobject.readOne(raw), href)
 
     def get_db_params(self, href, item):
         if hasattr(item.item, 'vevent'):
@@ -199,7 +210,7 @@ class Collection(FileSystemCollection):
     def get(self, href):
         if not href:
             return
-        item = self.db.get(href)
+        item, = self.db.get(href)
         if not item:
             return
 
