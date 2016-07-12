@@ -46,6 +46,9 @@ class Db(object):
             'INSERT INTO events VALUES (?, ?, ?, ?)', elements)
         self.commit()
 
+    def list(self):
+        return self.cursor.execute('SELECT href, start, end, load FROM events')
+
     def search(self, start, end):
         return self.cursor.execute(
             'SELECT href FROM events WHERE load OR ('
@@ -110,7 +113,7 @@ class Collection(FileSystemCollection):
 
         if hasattr(vobj, 'dtstart'):
             start = vobj.dtstart.value
-            if isinstance(start, date):
+            if not isinstance(start, datetime) and isinstance(start, date):
                 start = datetime.combine(start, time.min)
         else:
             start = datetime.min
@@ -118,7 +121,7 @@ class Collection(FileSystemCollection):
 
         if hasattr(vobj, 'dtend'):
             end = vobj.dtend.value
-            if isinstance(end, date):
+            if not isinstance(end, datetime) and isinstance(end, date):
                 end = datetime.combine(end, time.max)
         else:
             end = datetime.max
@@ -134,7 +137,7 @@ class Collection(FileSystemCollection):
         return item
 
     def update(self, href, vobject_item, etag=None):
-        item = super().upload(href, vobject_item)
+        item = super().update(href, vobject_item, etag)
         if item:
             self.db.update(*self.get_db_params(href, item))
         return item
