@@ -19,6 +19,8 @@ class Db(object):
     def connection(self):
         if not self._connection:
             must_create = not os.path.exists(self.db_path)
+            if must_create:
+                os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
             self._connection = sqlite3.connect(self.db_path)
             if must_create:
                 self.create_table()
@@ -69,11 +71,11 @@ class Db(object):
 
 
 class Collection(FileSystemCollection):
-    db_name = '.index.db.props'  # TODO: Find a better way to avoid conflicts
-
     def __init__(self, path, principal=False):
         super().__init__(path, principal)
-        db_path = self._filesystem_path + self.db_name
+
+        db_path = os.path.join(
+            self._filesystem_path, ".Radicale.index.db")
         self.db = Db(db_path)
 
     def dt_to_timestamp(self, dt):
@@ -95,10 +97,16 @@ class Collection(FileSystemCollection):
         if not time_range:
             return super().pre_filtered_list(filters)
         start, end = time_range
-        start = self.dt_to_timestamp(
-            datetime.strptime(start, "%Y%m%dT%H%M%SZ"))
-        end = self.dt_to_timestamp(
-            datetime.strptime(end, "%Y%m%dT%H%M%SZ"))
+        if start:
+            start = self.dt_to_timestamp(
+                datetime.strptime(start, "%Y%m%dT%H%M%SZ"))
+        else:
+            start = datetime.min
+        if end:
+            end = self.dt_to_timestamp(
+                datetime.strptime(end, "%Y%m%dT%H%M%SZ"))
+        else:
+            end = datetime.max
 
         return [self.get(href) for href, in self.db.search(start, end)]
 
