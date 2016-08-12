@@ -53,7 +53,7 @@ class Db(object):
         try:
             for result in self.cursor.execute(
                     'SELECT href FROM events WHERE load OR ('
-                    '? < end AND ? > start)', (start, end)):
+                    '? <= end AND ? >= start)', (start, end)):
                 yield result
         finally:
             self.connection.rollback()
