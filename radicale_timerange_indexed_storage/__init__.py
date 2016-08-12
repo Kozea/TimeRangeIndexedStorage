@@ -7,23 +7,20 @@ import os
 import sqlite3
 from itertools import groupby
 from random import getrandbits
-import vobject
 
 
 class Db(object):
-    def __init__(self, db_path):
+    def __init__(self, folder, file_name=".Radicale.index.db"):
         self._connection = None
-        self.db_path = db_path
+        self.db_path = os.path.join(folder, file_name)
+        if not os.path.exists(self.db_path):
+            os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+            self.create_table()
 
     @property
     def connection(self):
         if not self._connection:
-            must_create = not os.path.exists(self.db_path)
-            if must_create:
-                os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
             self._connection = sqlite3.connect(self.db_path)
-            if must_create:
-                self.create_table()
         return self._connection
 
     @property
@@ -31,52 +28,54 @@ class Db(object):
         return self.connection.cursor()
 
     def create_table(self):
-        self.cursor.execute(
-            'CREATE TABLE events (href, start, end, load)')
-        self.commit()
-
-    def commit(self):
+        self.cursor.execute('CREATE TABLE events (href, start, end, load)')
         self.connection.commit()
 
     def add(self, href, start, end, load):
         self.cursor.execute('INSERT INTO events VALUES (?, ?, ?, ?)', (
-            href, start, end, load))
-        self.commit()
+                href, start, end, load))
+        self.connection.commit()
 
     def add_all(self, elements):
         self.cursor.executemany(
             'INSERT INTO events VALUES (?, ?, ?, ?)', elements)
-        self.commit()
+        self.connection.commit()
 
     def list(self):
-        return self.cursor.execute('SELECT href, start, end, load FROM events')
+        try:
+            for result in self.cursor.execute(
+                    'SELECT href, start, end, load FROM events'):
+                yield result
+        finally:
+            self.connection.rollback()
 
     def search(self, start, end):
-        return self.cursor.execute(
-            'SELECT href FROM events WHERE load OR ('
-            '? < end AND ? > start)', (start, end))
+        try:
+            for result in self.cursor.execute(
+                    'SELECT href FROM events WHERE load OR ('
+                    '? < end AND ? > start)', (start, end)):
+                yield result
+        finally:
+            self.connection.rollback()
 
     def update(self, href, start, end, load):
         self.cursor.execute(
             'UPDATE events SET start = ?, end = ?, load = ? WHERE href = ?', (
                 start, end, load, href))
-        self.commit()
+        self.connection.commit()
 
     def delete(self, href):
         if href is not None:
             self.cursor.execute('DELETE FROM events WHERE href = ?', (href,))
         else:
             self.cursor.execute('DELETE FROM events')
-        self.commit()
+        self.connection.commit()
 
 
 class Collection(FileSystemCollection):
-    def __init__(self, path, principal=False):
-        super().__init__(path, principal)
-
-        db_path = os.path.join(
-            self._filesystem_path, ".Radicale.index.db")
-        self.db = Db(db_path)
+    def __init__(self, path, principal=False, folder=None):
+        super().__init__(path, principal, folder)
+        self.db = Db(self._filesystem_path)
 
     def dt_to_timestamp(self, dt):
         if dt.tzinfo is None:
@@ -110,7 +109,7 @@ class Collection(FileSystemCollection):
 
         return [self.get(href) for href, in self.db.search(start, end)]
 
-    def get_db_params(self, href, item):
+    def get_db_params(self, item):
         if hasattr(item.item, 'vevent'):
             vobj = item.item.vevent
         elif hasattr(item.item, 'vtodo'):
@@ -136,64 +135,28 @@ class Collection(FileSystemCollection):
         end = end.timestamp()
 
         load = bool(getattr(vobj, 'rruleset', False))
-        return href, start, end, load
+        return item.href, start, end, load
 
     def upload(self, href, vobject_item):
         item = super().upload(href, vobject_item)
         if item:
-            self.db.add(*self.get_db_params(href, item))
+            self.db.add(*self.get_db_params(item))
         return item
 
-    def update(self, href, vobject_item, etag=None):
-        item = super().update(href, vobject_item, etag)
+    def upload_all(self, collections):
+        # TODO: See why super() does not work
+        self.db.add_all([
+            self.get_db_params(
+                super(Collection, self).upload(href, vobject_item)
+            ) for href, vobject_item in collections.items()
+        ])
+
+    def update(self, href, vobject_item):
+        item = super().update(href, vobject_item)
         if item:
-            self.db.update(*self.get_db_params(href, item))
+            self.db.update(*self.get_db_params(item))
         return item
 
-    def delete(self, href=None, etag=None):
-        super().delete(href, etag)
+    def delete(self, href=None):
+        super().delete(href)
         self.db.delete(href)
-
-    @classmethod
-    def create_collection(cls, href, collection=None, tag=None):
-        # TODO: Improve Radicale api to avoid copy pasta
-        folder = os.path.expanduser(
-            cls.configuration.get("storage", "filesystem_folder"))
-        path = path_to_filesystem(folder, href)
-        if not os.path.exists(path):
-            os.makedirs(path)
-        if not tag and collection:
-            tag = collection[0].name
-        self = cls(href)
-        if tag == "VCALENDAR":
-            self.set_meta("tag", "VCALENDAR")
-            if collection:
-                collection, = collection
-                items = []
-                for content in ("vevent", "vtodo", "vjournal"):
-                    items.extend(getattr(collection, "%s_list" % content, []))
-
-                def get_uid(item):
-                    return hasattr(item, 'uid') and item.uid.value
-
-                items_by_uid = groupby(
-                    sorted(items, key=get_uid), get_uid)
-
-                added_items = set()
-                for uid, items in items_by_uid:
-                    new_collection = vobject.iCalendar()
-                    for item in items:
-                        new_collection.add(item)
-                    file_name = hex(getrandbits(32))[2:]
-                    item = super(Collection, self).upload(
-                        file_name, new_collection)
-                    added_items.add(self.get_db_params(file_name, item))
-                self.db.add_all(added_items)
-
-        elif tag == "VCARD":
-            self.set_meta("tag", "VADDRESSBOOK")
-            if collection:
-                for card in collection:
-                    file_name = hex(getrandbits(32))[2:]
-                    self.upload(file_name, card)
-        return self
