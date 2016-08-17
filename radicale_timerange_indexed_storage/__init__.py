@@ -13,14 +13,17 @@ class Db(object):
     def __init__(self, folder, file_name=".Radicale.index.db"):
         self._connection = None
         self.db_path = os.path.join(folder, file_name)
-        if not os.path.exists(self.db_path):
-            os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-            self.create_table()
 
     @property
     def connection(self):
         if not self._connection:
+            must_create_table = False
+            if not os.path.exists(self.db_path):
+                must_create_table = True
+                os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
             self._connection = sqlite3.connect(self.db_path)
+            if must_create_table:
+                self.create_table()
         return self._connection
 
     @property
@@ -124,7 +127,7 @@ class Collection(FileSystemCollection):
                 start = datetime.combine(start, time.min)
         else:
             start = datetime.min
-        start = start.timestamp()
+        start = self.dt_to_timestamp(start)
 
         if hasattr(vobj, 'dtend'):
             end = vobj.dtend.value
@@ -132,7 +135,7 @@ class Collection(FileSystemCollection):
                 end = datetime.combine(end, time.max)
         else:
             end = datetime.max
-        end = end.timestamp()
+        end = self.dt_to_timestamp(end)
 
         load = bool(getattr(vobj, 'rruleset', False))
         return item.href, start, end, load
