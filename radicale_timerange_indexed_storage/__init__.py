@@ -161,5 +161,5 @@ class Collection(FileSystemCollection):
         return item
 
     def delete(self, href=None):
-        super().delete(href)
         self.db.delete(href)
+        super().delete(href)
