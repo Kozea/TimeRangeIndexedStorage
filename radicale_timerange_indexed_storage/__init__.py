@@ -28,12 +28,14 @@ class Db(object):
         return self.connection.cursor()
 
     def create_table(self):
-        self.cursor.execute('CREATE TABLE events (href, start, end, load)')
+        self.cursor.execute(
+            'CREATE TABLE events (href PRIMARY KEY, start, end, load)')
         self.connection.commit()
 
-    def add(self, href, start, end, load):
-        self.cursor.execute('INSERT INTO events VALUES (?, ?, ?, ?)', (
-                href, start, end, load))
+    def upsert(self, href, start, end, load):
+        self.cursor.execute(
+            'INSERT OR REPLACE INTO events VALUES (?, ?, ?, ?)',
+            (href, start, end, load))
         self.connection.commit()
 
     def add_all(self, elements):
@@ -57,12 +59,6 @@ class Db(object):
                 yield result
         finally:
             self.connection.rollback()
-
-    def update(self, href, start, end, load):
-        self.cursor.execute(
-            'UPDATE events SET start = ?, end = ?, load = ? WHERE href = ?', (
-                start, end, load, href))
-        self.connection.commit()
 
     def delete(self, href):
         if href is not None:
@@ -140,7 +136,7 @@ class Collection(FileSystemCollection):
     def upload(self, href, vobject_item):
         item = super().upload(href, vobject_item)
         if item:
-            self.db.add(*self.get_db_params(item))
+            self.db.upsert(*self.get_db_params(item))
         return item
 
     def upload_all_nonatomic(self, collections):
@@ -150,12 +146,6 @@ class Collection(FileSystemCollection):
                 super(Collection, self).upload(href, vobject_item)
             ) for href, vobject_item in collections.items()
         ])
-
-    def update(self, href, vobject_item):
-        item = super().update(href, vobject_item)
-        if item:
-            self.db.update(*self.get_db_params(item))
-        return item
 
     def delete(self, href=None):
         self.db.delete(href)
