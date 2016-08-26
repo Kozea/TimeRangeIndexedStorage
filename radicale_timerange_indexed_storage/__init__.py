@@ -146,7 +146,7 @@ class Collection(FileSystemCollection):
             self.db.add(*self.get_db_params(item))
         return item
 
-    def upload_all(self, collections):
+    def upload_all_nonatomic(self, collections):
         # TODO: See why super() does not work
         self.db.add_all([
             self.get_db_params(
