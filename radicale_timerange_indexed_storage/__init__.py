@@ -1,12 +1,9 @@
 from datetime import date, datetime, time, timezone
-
-from radicale.storage import (
-    Collection as FileSystemCollection, path_to_filesystem)
-from radicale.xmlutils import _tag
 import os
 import sqlite3
-from itertools import groupby
-from random import getrandbits
+
+from radicale.storage import Collection as FileSystemCollection
+from radicale.xmlutils import _tag
 
 
 class Db(object):
